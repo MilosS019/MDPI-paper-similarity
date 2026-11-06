@@ -11,6 +11,7 @@ from typing import Annotated
 
 import httpx
 import typer
+from sqlalchemy.exc import SQLAlchemyError
 
 from paper_similarity.bootstrap import Resources, create_resources
 from paper_similarity.core.config import Settings, get_settings
@@ -35,6 +36,10 @@ class SortOption(StrEnum):
     updated = "lastUpdatedDate"
     relevance = "relevance"
 
+
+# Expected operational failures: reported as one clear line and a non-zero exit code instead
+# of a traceback. Anything else is a bug and keeps its traceback.
+FAILURES = (PaperSimilarityError, SQLAlchemyError, OSError)
 
 USER_AGENT = "paper-similarity/0.1 (arXiv ingestion for a similarity search demo)"
 
@@ -100,7 +105,7 @@ def ingest(
     settings = _setup()
     try:
         report = asyncio.run(_ingest(settings, query, max_results, sort_by.value))
-    except PaperSimilarityError as exc:
+    except FAILURES as exc:
         typer.secho(f"Ingestion failed: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
 
@@ -134,7 +139,7 @@ def index() -> None:
     settings = _setup()
     try:
         count = asyncio.run(_index(settings))
-    except PaperSimilarityError as exc:
+    except FAILURES as exc:
         typer.secho(f"Indexing failed: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"indexed={count}")
@@ -172,7 +177,7 @@ def reindex(
     settings = _setup()
     try:
         report = asyncio.run(_reindex(settings, from_raw))
-    except PaperSimilarityError as exc:
+    except FAILURES as exc:
         typer.secho(f"Reindex failed: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(

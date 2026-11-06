@@ -245,6 +245,9 @@ class SubmissionRepository:
         row = await self._session.get(SubmissionRow, submission_id)
         if row is None:
             return None
+        # Chunk offsets index into the embedding text, which is derived deterministically
+        # from the stored title and text.
+        source = build_embedding_text(row.title, row.text)
         return Submission(
             id=row.id,
             title=row.title,
@@ -255,7 +258,7 @@ class SubmissionRepository:
                 EmbeddedChunk(
                     chunk=TextChunk(
                         index=c.chunk_index,
-                        text=row.text[c.char_start : c.char_end],
+                        text=source[c.char_start : c.char_end],
                         char_start=c.char_start,
                         char_end=c.char_end,
                     ),

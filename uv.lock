@@ -757,6 +757,7 @@ dependencies = [
     { name = "fastembed" },
     { name = "feedparser" },
     { name = "httpx" },
+    { name = "numpy" },
     { name = "prometheus-client" },
     { name = "prometheus-fastapi-instrumentator" },
     { name = "pyarrow" },
@@ -766,6 +767,7 @@ dependencies = [
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "structlog" },
     { name = "tenacity" },
+    { name = "tokenizers" },
     { name = "typer" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -792,6 +794,7 @@ requires-dist = [
     { name = "fastembed", specifier = ">=0.4" },
     { name = "feedparser", specifier = ">=6.0" },
     { name = "httpx", specifier = ">=0.28" },
+    { name = "numpy", specifier = ">=2.0" },
     { name = "prometheus-client", specifier = ">=0.21" },
     { name = "prometheus-fastapi-instrumentator", specifier = ">=7.0" },
     { name = "pyarrow", specifier = ">=18.0" },
@@ -801,6 +804,7 @@ requires-dist = [
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
     { name = "structlog", specifier = ">=24.4" },
     { name = "tenacity", specifier = ">=9.0" },
+    { name = "tokenizers", specifier = ">=0.20" },
     { name = "typer", specifier = ">=0.13" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]

@@ -6,7 +6,7 @@ import httpx
 import pyarrow.parquet as pq
 import pytest
 import respx
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from paper_similarity.bootstrap import Resources
 from paper_similarity.db.models import ArxivPaperRow
@@ -14,7 +14,9 @@ from paper_similarity.db.repositories import PaperRepository
 from paper_similarity.ingestion.arxiv_client import ArxivClient
 from paper_similarity.ingestion.parquet_store import RawParquetStore
 from paper_similarity.ingestion.pipeline import IngestionPipeline
+from paper_similarity.ingestion.raw_reader import RawParquetReader
 from paper_similarity.services.indexing import IndexingService
+from paper_similarity.services.reindex import ReindexService
 from tests.conftest import FixtureLoader
 
 ARXIV = "https://arxiv.test/api/query"
@@ -179,3 +181,31 @@ async def test_index_heals_rows_left_pending_by_an_interrupted_run(
     assert await indexer.index_pending() == 3
     assert await db_counts(resources) == (3, 3)
     assert await resources.vector_store.count() == 3  # overwritten, not duplicated
+
+
+async def test_reindex_rebuilds_database_and_index_from_raw_files(
+    resources: Resources,
+    http: httpx.AsyncClient,
+    arxiv: respx.Router,
+    fixture_bytes: FixtureLoader,
+) -> None:
+    arxiv.get(ARXIV).respond(200, content=fixture_bytes("arxiv_page.xml"))
+    await make_pipeline(resources, http).run("cat:cs.CL", max_results=3)
+    # Simulate losing the database rows and the vector index.
+    async with resources.session_factory() as session, session.begin():
+        await session.execute(delete(ArxivPaperRow))
+    await resources.vector_store.recreate()
+
+    indexer = IndexingService(resources.session_factory, resources.embedder, resources.vector_store)
+    service = ReindexService(
+        resources.session_factory,
+        RawParquetReader(resources.settings.raw_data_dir),
+        indexer,
+        resources.vector_store,
+    )
+    report = await service.run(from_raw=True)
+
+    assert (report.raw_papers, report.inserted, report.indexed) == (3, 3, 3)
+    assert await db_counts(resources) == (3, 3)
+    assert await resources.vector_store.count() == 3
+    assert arxiv.calls.call_count == 1  # arXiv was not called again

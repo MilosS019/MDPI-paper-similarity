@@ -1,4 +1,4 @@
-"""Command line interface: ``pulse ingest`` and ``pulse index``.
+"""Command line interface: ``pulse ingest | index | reindex | stats``.
 
 Ingestion is a command rather than something the API does at startup: it is explicit,
 repeatable and safe to re-run, does not slow down or block API startup, and maps directly to a
@@ -19,7 +19,9 @@ from paper_similarity.domain.errors import PaperSimilarityError
 from paper_similarity.ingestion.arxiv_client import ArxivClient, SortBy
 from paper_similarity.ingestion.parquet_store import RawParquetStore
 from paper_similarity.ingestion.pipeline import IngestionPipeline, IngestionReport
+from paper_similarity.ingestion.raw_reader import RawParquetReader
 from paper_similarity.services.indexing import IndexingService
+from paper_similarity.services.reindex import ReindexReport, ReindexService
 
 app = typer.Typer(
     help="Scientific paper similarity service: ingestion and maintenance commands.",
@@ -136,6 +138,62 @@ def index() -> None:
         typer.secho(f"Indexing failed: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.echo(f"indexed={count}")
+
+
+async def _reindex(settings: Settings, from_raw: bool) -> ReindexReport:
+    resources = create_resources(settings)
+    try:
+        service = ReindexService(
+            resources.session_factory,
+            RawParquetReader(settings.raw_data_dir),
+            _indexer(resources),
+            resources.vector_store,
+        )
+        return await service.run(from_raw=from_raw)
+    finally:
+        await resources.close()
+
+
+@app.command()
+def reindex(
+    from_raw: Annotated[
+        bool,
+        typer.Option(
+            "--from-raw/--from-db",
+            help="Reload papers from the raw Parquet files (via DuckDB) before re-embedding, "
+            "or re-embed what is already in Postgres.",
+        ),
+    ] = True,
+) -> None:
+    """Rebuild the vector index (e.g. after changing the embedding model) without calling arXiv.
+
+    Drops and recreates the Qdrant collection, then re-embeds every paper.
+    """
+    settings = _setup()
+    try:
+        report = asyncio.run(_reindex(settings, from_raw))
+    except PaperSimilarityError as exc:
+        typer.secho(f"Reindex failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(
+        f"raw_papers={report.raw_papers} inserted={report.inserted} updated={report.updated} "
+        f"unchanged={report.unchanged} indexed={report.indexed}"
+    )
+
+
+@app.command()
+def stats() -> None:
+    """Summarise the raw landing zone with DuckDB: runs, papers, top categories."""
+    settings = _setup()
+    summary = RawParquetReader(settings.raw_data_dir).summary()
+    if summary is None:
+        typer.echo(f"No raw data under {settings.raw_data_dir}. Run `pulse ingest` first.")
+        return
+    typer.echo(f"runs={summary.runs} records={summary.records} distinct_papers={summary.papers}")
+    typer.echo(f"published: {summary.oldest} .. {summary.newest}")
+    typer.echo("top primary categories:")
+    for category, count in summary.top_categories:
+        typer.echo(f"  {category or '-':<12} {count}")
 
 
 if __name__ == "__main__":  # pragma: no cover

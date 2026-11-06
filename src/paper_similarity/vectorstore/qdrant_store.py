@@ -114,7 +114,7 @@ class QdrantVectorStore:
 
     async def _with_collection[T](self, operation: Callable[[], Awaitable[T]]) -> T:
         """Run an operation once the collection is verified; if the collection vanished in the
-        meantime, recreate it and retry once (the index is then rebuilt by `pulse index`)."""
+        meantime, recreate it and retry once (rebuild the index with `pulse reindex --from-db`)."""
         if not self._verified:
             await self.ensure_collection()
         try:

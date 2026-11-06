@@ -116,7 +116,8 @@ gives the inserted / updated / unchanged counts.
 
 1. Load the submission and its chunk vectors. Unknown → 404; malformed UUID → 422.
 2. If the submission was embedded with a different model than the current one, re-embed its
-   stored text on the fly: vectors from different models are not comparable.
+   stored text and save the new chunks (once per submission): vectors from different models
+   are not comparable.
 3. `query_batch_points`: one Qdrant request containing one query per chunk, each asking for
    `k + 5` hits.
 4. **Aggregate (MaxP):** each paper's score is its maximum over chunks. Sort by score
@@ -143,7 +144,10 @@ data.
 | Qdrant down during a request | 503 problem+json with `Retry-After`; submissions still accepted (they only need Postgres) | Automatic once Qdrant is back |
 | Postgres down during a request | 503 problem+json with `Retry-After` | Automatic (`pool_pre_ping` drops dead connections) |
 | Qdrant down at API startup | API starts anyway, `/ready` returns 503 | Automatic |
-| Embedding model changed (different dimension) | Startup and ingestion refuse the old collection with a clear message | `pulse reindex` |
+| Embedding model changed | The collection records its model and dimension; the API and ingestion refuse a collection built with another model, with a clear message | `pulse reindex` |
+| Qdrant collection deleted while running | Recreated empty on the next operation (one retry); searches return no matches until reindexed | `pulse reindex --from-db` |
+| `pulse reindex` interrupted | Index state is reset in Postgres before the collection is recreated, so every row is pending | Re-run `pulse reindex` or `pulse index` |
+| Oversized request body | 413 problem+json before the body is parsed | None needed |
 
 ## 5. Decisions and rejected alternatives
 

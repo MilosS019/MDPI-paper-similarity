@@ -45,8 +45,6 @@ class Settings(BaseSettings):
     max_submission_chars: int = Field(default=100_000, ge=1)
     chunk_max_tokens: int = Field(default=512, ge=16)
     chunk_overlap_tokens: int = Field(default=64, ge=0)
-    default_similar_limit: int = Field(default=10, ge=1)
-    max_similar_limit: int = Field(default=50, ge=1)
 
     # Logging
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
@@ -56,8 +54,6 @@ class Settings(BaseSettings):
     def _check_chunking(self) -> "Settings":
         if self.chunk_overlap_tokens >= self.chunk_max_tokens:
             raise ValueError("chunk_overlap_tokens must be smaller than chunk_max_tokens")
-        if self.default_similar_limit > self.max_similar_limit:
-            raise ValueError("default_similar_limit must not exceed max_similar_limit")
         return self
 
 

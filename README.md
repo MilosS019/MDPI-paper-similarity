@@ -105,7 +105,7 @@ read. Every setting has a working default for the compose setup; see
 | `PULSE_EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Any fastembed model; changing it requires `pulse reindex` |
 | `PULSE_ARXIV_PAGE_SIZE` | `50` | Results per arXiv API request |
 | `PULSE_ARXIV_REQUEST_DELAY_SECONDS` | `3.0` | Pause between arXiv requests, as arXiv asks |
-| `PULSE_ARXIV_MAX_RETRIES` | `4` | Attempts per request before giving up |
+| `PULSE_ARXIV_MAX_ATTEMPTS` | `4` | Total attempts per request (first try + retries) before giving up |
 | `PULSE_RAW_DATA_DIR` | `data/raw/arxiv` | Parquet landing zone |
 | `PULSE_MAX_SUBMISSION_CHARS` | `100000` | Longest accepted submission |
 | `PULSE_CHUNK_MAX_TOKENS` / `PULSE_CHUNK_OVERLAP_TOKENS` | `512` / `64` | Chunk window and overlap |

@@ -71,7 +71,7 @@ async def _ingest(
                 base_url=settings.arxiv_base_url,
                 page_size=settings.arxiv_page_size,
                 request_delay=settings.arxiv_request_delay_seconds,
-                max_attempts=settings.arxiv_max_retries,
+                max_attempts=settings.arxiv_max_attempts,
             )
             pipeline = IngestionPipeline(
                 client,

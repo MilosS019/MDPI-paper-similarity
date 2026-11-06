@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     arxiv_page_size: int = Field(default=50, ge=1, le=2000)
     arxiv_request_delay_seconds: float = Field(default=3.0, ge=0)
     arxiv_timeout_seconds: float = Field(default=30.0, gt=0)
-    arxiv_max_retries: int = Field(default=4, ge=1)
+    arxiv_max_attempts: int = Field(default=4, ge=1)  # total tries, including the first
 
     # Raw landing zone (Parquet)
     raw_data_dir: Path = Path("data/raw/arxiv")

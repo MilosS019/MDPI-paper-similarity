@@ -78,7 +78,7 @@ sequenceDiagram
     loop each page (≤ page_size, ≥ 3 s apart)
         CLI->>AX: GET /api/query?search_query=…&start=…
         AX-->>CLI: Atom XML (retries on transient failure)
-        CLI->>RAW: write part-NNNNN.parquet (tmp + rename)
+        CLI->>RAW: write part-NNNNN-<run id>.parquet (tmp + rename)
         CLI->>PG: INSERT … ON CONFLICT (arxiv_id) DO UPDATE … WHERE changed  [commit]
     end
     loop pending rows (keyset pages of 64)

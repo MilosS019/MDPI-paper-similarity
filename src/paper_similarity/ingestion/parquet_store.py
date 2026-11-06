@@ -1,14 +1,18 @@
 """Raw landing zone: every ingestion run writes what it fetched from arXiv to Parquet.
 
-Layout (Hive-style partitions, one folder per run, one file per API page)::
+Layout (Hive-style partitions by run start time, one file per API page)::
 
-    <root>/run_ts=2026-11-06T10-00-00Z/part-00000.parquet
+    <root>/run_ts=2026-11-06T10-00-00Z/part-00000-3f9c1a2b.parquet
+
+The suffix is a random id per run, so two runs that start in the same second (e.g. two
+CronJobs for different queries) write different files instead of overwriting each other.
 
 Keeping the raw records means the database and vector index can be rebuilt (for example after
 switching the embedding model) without calling arXiv again, and there is an audit trail of
 what arXiv returned and when. Files are immutable: runs only ever add new files.
 """
 
+import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -46,6 +50,7 @@ class RawRunWriter:
 
     def __init__(self, directory: Path, query: str) -> None:
         self.directory = directory
+        self.run_id = uuid.uuid4().hex[:8]
         self._query = query
         self._part = 0
         self.files: list[Path] = []
@@ -76,7 +81,7 @@ class RawRunWriter:
             schema=RAW_SCHEMA,
         )
         self.directory.mkdir(parents=True, exist_ok=True)
-        target = self.directory / f"part-{self._part:05d}.parquet"
+        target = self.directory / f"part-{self._part:05d}-{self.run_id}.parquet"
         # Write to a temporary name and rename, so readers never see a half-written file.
         tmp = target.with_suffix(".parquet.tmp")
         pq.write_table(table, tmp, compression="zstd")

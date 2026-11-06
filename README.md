@@ -134,7 +134,7 @@ default order is newest submissions first. Examples:
 
 **What a run does:**
 1. Fetches the results page by page.
-2. Writes each page to `data/raw/arxiv/run_ts=<UTC time>/part-NNNNN.parquet`.
+2. Writes each page to `data/raw/arxiv/run_ts=<UTC time>/part-NNNNN-<run id>.parquet`.
 3. Upserts the papers into Postgres.
 4. Embeds new or changed papers.
 5. Upserts their vectors into Qdrant.

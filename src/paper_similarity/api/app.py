@@ -5,9 +5,11 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from paper_similarity.api.errors import register_error_handlers
 from paper_similarity.api.middleware import RequestContextMiddleware
+from paper_similarity.api.routes_health import router as health_router
 from paper_similarity.api.routes_papers import router as papers_router
 from paper_similarity.bootstrap import Resources, create_resources
 from paper_similarity.core.config import Settings, get_settings
@@ -59,5 +61,12 @@ def create_app(
     )
     app.add_middleware(RequestContextMiddleware)
     register_error_handlers(app)
+    app.include_router(health_router)
     app.include_router(papers_router)
+    # Request count and latency per route template (not per raw path, which would explode
+    # label cardinality with ids), plus the custom counters in core.metrics, at /metrics.
+    Instrumentator(
+        excluded_handlers=["/metrics", "/health"],
+        should_group_status_codes=False,
+    ).instrument(app).expose(app, include_in_schema=False)
     return app

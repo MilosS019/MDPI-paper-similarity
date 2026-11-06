@@ -307,3 +307,45 @@ async def test_database_down_gives_503(settings: Settings, resources: Resources)
         response = await api.post("/api/v1/papers", json={"text": "no database"})
     body = assert_problem(response, 503)
     assert "database" in str(body["detail"])
+
+
+# --- Operations ------------------------------------------------------------------------
+
+
+async def test_health_is_always_ok(client: httpx.AsyncClient) -> None:
+    response = await client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+@pytest.mark.usefixtures("indexed_corpus")
+async def test_ready_reports_checks_and_index_stats(client: httpx.AsyncClient) -> None:
+    response = await client.get("/ready")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ready"
+    assert body["checks"] == {"database": "ok", "vector_store": "ok"}
+    assert body["index"] == {"papers": 4, "papers_indexed": 4, "vectors": 4}
+
+
+@pytest.mark.filterwarnings("ignore:Failed to obtain server version:UserWarning")
+async def test_ready_is_503_when_a_dependency_is_down(
+    settings: Settings, resources: Resources
+) -> None:
+    dead_qdrant = settings.model_copy(
+        update={"qdrant_url": "http://127.0.0.1:9", "qdrant_timeout_seconds": 1}
+    )
+    async with running_app(dead_qdrant) as api:
+        response = await api.get("/ready")
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "unavailable"
+    assert body["checks"]["database"] == "ok"
+    assert body["checks"]["vector_store"].startswith("error")
+
+
+async def test_metrics_are_exposed(client: httpx.AsyncClient) -> None:
+    await submit(client, "count me")
+    text = (await client.get("/metrics")).text
+    assert 'http_requests_total{handler="/api/v1/papers",method="POST",status="201"}' in text
+    assert 'pulse_embeddings_computed_total{purpose="submission_chunk"}' in text

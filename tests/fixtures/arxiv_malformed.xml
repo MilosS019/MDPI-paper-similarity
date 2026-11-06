@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Hand-written fixture: one valid old-style entry, one entry without an abstract,
+     one entry with an unrecognisable id. Used to test that bad entries are skipped. -->
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <id>https://arxiv.org/api/fixture</id>
+  <title>arXiv Query: fixture</title>
+  <updated>2026-11-06T11:00:00Z</updated>
+  <opensearch:itemsPerPage>3</opensearch:itemsPerPage>
+  <opensearch:totalResults>3</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <entry>
+    <id>http://arxiv.org/abs/hep-th/9901001v3</id>
+    <title>An Old-Style
+      Identifier Paper</title>
+    <updated>1999-02-01T00:00:00Z</updated>
+    <published>1999-01-01T00:00:00Z</published>
+    <summary>  Abstract text spread
+      over several   lines.  </summary>
+    <category term="hep-th" scheme="http://arxiv.org/schemas/atom"/>
+    <author><name>Jane Doe</name></author>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2401.00002v1</id>
+    <title>No Abstract Here</title>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <published>2024-01-01T00:00:00Z</published>
+    <summary>   </summary>
+  </entry>
+  <entry>
+    <id>urn:something-else</id>
+    <title>Bad Id</title>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <published>2024-01-01T00:00:00Z</published>
+    <summary>Has an abstract but no usable id.</summary>
+  </entry>
+</feed>

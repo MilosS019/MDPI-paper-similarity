@@ -30,6 +30,9 @@ RUN /app/.venv/bin/python -c \
 # ---- Runtime stage: only the virtualenv, the model and the migration scripts ------------
 FROM python:3.12-slim AS runtime
 
+# Re-declared so the runtime uses the same model that was built into the image.
+ARG EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+
 RUN useradd --create-home --uid 10001 app \
     && mkdir -p /app/data \
     && chown app:app /app/data
@@ -43,6 +46,7 @@ COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
+    PULSE_EMBEDDING_MODEL=${EMBEDDING_MODEL} \
     PULSE_EMBEDDING_CACHE_DIR=/models \
     PULSE_RAW_DATA_DIR=/app/data/raw/arxiv \
     PULSE_LOG_FORMAT=json

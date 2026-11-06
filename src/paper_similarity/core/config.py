@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     # Logging
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_format: Literal["json", "console"] = "json"
+
+    @field_validator("embedding_cache_dir", mode="before")
+    @classmethod
+    def _empty_means_default(cls, value: object) -> object:
+        # `PULSE_EMBEDDING_CACHE_DIR=` (as in .env.example) means "library default". Without
+        # this it would become Path("."), downloading the model into the working directory.
+        return None if isinstance(value, str) and not value.strip() else value
 
     @model_validator(mode="after")
     def _check_chunking(self) -> "Settings":

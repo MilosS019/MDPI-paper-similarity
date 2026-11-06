@@ -240,3 +240,65 @@ async def test_reindex_interrupted_after_reset_is_healed_by_index(
     # ...and a plain `pulse index` finishes the job.
     assert await indexer.index_pending() == 3
     assert await db_counts(resources) == (3, 3)
+
+
+async def test_metadata_only_change_is_applied_without_reembedding(
+    resources: Resources,
+    http: httpx.AsyncClient,
+    arxiv: respx.Router,
+    fixture_bytes: FixtureLoader,
+) -> None:
+    original = fixture_bytes("arxiv_page.xml")
+    # Cross-listed to a new category: same version, same <updated> time, same text.
+    cross_listed = original.replace(
+        b'<category term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>',
+        b'<category term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>\n'
+        b'    <category term="cs.IR" scheme="http://arxiv.org/schemas/atom"/>',
+        1,
+    )
+    arxiv.get(ARXIV).mock(
+        side_effect=[
+            httpx.Response(200, content=original),
+            httpx.Response(200, content=cross_listed),
+        ]
+    )
+    pipeline = make_pipeline(resources, http)
+
+    await pipeline.run("cat:cs.CL", max_results=3)
+    second = await pipeline.run("cat:cs.CL", max_results=3)
+
+    assert (second.updated, second.unchanged, second.indexed) == (1, 2, 0)
+    async with resources.session_factory() as session:
+        row = await session.scalar(
+            select(ArxivPaperRow).where(ArxivPaperRow.arxiv_id == "2611.08433")
+        )
+    assert row is not None
+    assert row.categories == ["cs.CL", "cs.AI", "cs.IR"]
+    assert row.indexed_at is not None  # text unchanged: the vector is kept
+
+
+async def test_older_data_never_overwrites_newer(
+    resources: Resources,
+    http: httpx.AsyncClient,
+    arxiv: respx.Router,
+    fixture_bytes: FixtureLoader,
+) -> None:
+    newer = fixture_bytes("arxiv_page.xml")
+    older = newer.replace(
+        b"<updated>2026-11-05T18:27:20Z</updated>", b"<updated>2026-01-01T00:00:00Z</updated>", 1
+    ).replace(b"MedGraph: Maintaining", b"OLD TITLE: Maintaining")
+    arxiv.get(ARXIV).mock(
+        side_effect=[httpx.Response(200, content=newer), httpx.Response(200, content=older)]
+    )
+    pipeline = make_pipeline(resources, http)
+
+    await pipeline.run("cat:cs.CL", max_results=3)
+    second = await pipeline.run("cat:cs.CL", max_results=3)
+
+    assert second.updated == 0
+    async with resources.session_factory() as session:
+        row = await session.scalar(
+            select(ArxivPaperRow).where(ArxivPaperRow.arxiv_id == "2611.08433")
+        )
+    assert row is not None
+    assert row.title.startswith("MedGraph")

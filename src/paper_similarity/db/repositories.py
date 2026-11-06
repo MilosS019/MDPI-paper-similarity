@@ -48,6 +48,22 @@ class PendingPaper:
     content_hash: str
 
 
+# Every column the upsert writes from arXiv data.
+_COMPARED = (
+    "version",
+    "title",
+    "abstract",
+    "authors",
+    "categories",
+    "primary_category",
+    "published",
+    "source_updated",
+    "abs_url",
+    "pdf_url",
+    "content_hash",
+)
+
+
 def _row_to_paper(row: ArxivPaperRow) -> ArxivPaper:
     return ArxivPaper(
         arxiv_id=row.arxiv_id,
@@ -133,13 +149,12 @@ class PaperRepository:
                 "embedding_model": _keep_if(text_unchanged, table.embedding_model),
                 "updated_at": func.now(),
             },
+            # Update only with data at least as new, and only if some stored field differs.
+            # Comparing every field (not just the timestamp) catches metadata changes arXiv
+            # makes without a new <updated> time, e.g. a paper cross-listed to a new category.
             where=and_(
                 excluded.source_updated >= table.source_updated,
-                or_(
-                    excluded.source_updated > table.source_updated,
-                    table.content_hash != excluded.content_hash,
-                    table.version != excluded.version,
-                ),
+                or_(*(table[name].is_distinct_from(excluded[name]) for name in _COMPARED)),
             ),
         )
         # xmax = 0 only for freshly inserted tuples: a well-known Postgres idiom to tell

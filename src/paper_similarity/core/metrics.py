@@ -1,7 +1,14 @@
 """Prometheus metrics for the application's own operations.
 
 HTTP request metrics (count, latency per route) are added by the instrumentator in the app
-factory; these counters cover work that happens outside a request or inside a service.
+factory. The counters below are recorded by whichever process does the work:
+
+* In the API process (exported at /metrics): submission embeddings, embedding latency and
+  similarity result sizes.
+* In the ``pulse`` CLI (ingestion, indexing, arXiv failures): the process is short-lived and
+  has no /metrics endpoint, so these values are not scraped. Its results are reported in its
+  log lines and summary output instead. Exporting them would need a Prometheus Pushgateway
+  (or running ingestion as a long-lived worker); see the README's known limitations.
 """
 
 from prometheus_client import Counter, Histogram

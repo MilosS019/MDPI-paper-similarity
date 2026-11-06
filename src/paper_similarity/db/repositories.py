@@ -40,6 +40,7 @@ class UpsertResult:
 class PendingPaper:
     """A paper whose vector is missing or stale, with the text that should be embedded."""
 
+    id: int
     arxiv_id: str
     title: str
     embedding_text: str
@@ -148,15 +149,22 @@ class PaperRepository:
         updated = len(flags) - inserted
         return UpsertResult(inserted=inserted, updated=updated, unchanged=len(unique) - len(flags))
 
-    async def pending(self, embedding_model: str, limit: int) -> list[PendingPaper]:
-        """Papers whose vector is missing, or was built with a different model."""
+    async def pending(
+        self, embedding_model: str, limit: int, *, after_id: int = 0
+    ) -> list[PendingPaper]:
+        """Papers whose vector is missing, or was built with a different model.
+
+        Keyset pagination (``id > after_id``) guarantees a single pass over the rows even if
+        some of them stay pending, so callers can loop until an empty batch.
+        """
         stmt = (
             select(ArxivPaperRow)
             .where(
+                ArxivPaperRow.id > after_id,
                 or_(
                     ArxivPaperRow.indexed_at.is_(None),
                     ArxivPaperRow.embedding_model.is_distinct_from(embedding_model),
-                )
+                ),
             )
             .order_by(ArxivPaperRow.id)
             .limit(limit)
@@ -167,6 +175,7 @@ class PaperRepository:
             text = build_embedding_text(row.title, row.abstract)
             result.append(
                 PendingPaper(
+                    id=row.id,
                     arxiv_id=row.arxiv_id,
                     title=row.title,
                     embedding_text=text,

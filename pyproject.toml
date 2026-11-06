@@ -25,6 +25,7 @@ dependencies = [
     "tenacity>=9.0",
     "tokenizers>=0.20",
     "typer>=0.13",
+    "tzdata>=2024.2",
     "uvicorn[standard]>=0.32",
 ]
 

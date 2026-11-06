@@ -59,7 +59,7 @@ def make_pipeline(
 
 async def db_counts(resources: Resources) -> tuple[int, int]:
     async with resources.session_factory() as session:
-        return await PaperRepository(session).counts()
+        return await PaperRepository(session).counts(resources.embedder.model_name)
 
 
 async def test_ingest_stores_lands_and_indexes(
@@ -209,3 +209,4 @@ async def test_reindex_rebuilds_database_and_index_from_raw_files(
     assert await db_counts(resources) == (3, 3)
     assert await resources.vector_store.count() == 3
     assert arxiv.calls.call_count == 1  # arXiv was not called again
+

@@ -57,7 +57,9 @@ async def ready(resources: ResourcesDep, response: Response) -> ReadinessRespons
         async with asyncio.timeout(CHECK_TIMEOUT_SECONDS):
             async with resources.session_factory() as session:
                 await session.execute(text("SELECT 1"))
-                papers, indexed = await PaperRepository(session).counts()
+                papers, indexed = await PaperRepository(session).counts(
+                    resources.embedder.model_name
+                )
         checks["database"] = "ok"
     except Exception as exc:  # a probe reports failures, it never raises
         checks["database"] = f"error: {type(exc).__name__}"

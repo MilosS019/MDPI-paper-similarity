@@ -38,8 +38,9 @@ def create_app(
         try:
             await resources.vector_store.ensure_collection()
         except DependencyUnavailableError as exc:
-            # Start anyway: /ready reports the problem and requests get a clear 503 until
-            # Qdrant is reachable, instead of the process crash-looping.
+            # Start anyway instead of crash-looping: /ready reports the problem, requests get
+            # a 503, and the collection is created/checked on first use once Qdrant is back.
+            # A collection built by another model is not caught here: startup fails loudly.
             log.warning("vector_store_unavailable_at_startup", error=str(exc))
         log.info("app_started", embedding_model=resources.embedder.model_name)
         try:

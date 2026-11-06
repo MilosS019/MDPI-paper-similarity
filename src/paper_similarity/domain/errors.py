@@ -26,3 +26,15 @@ class DependencyUnavailableError(PaperSimilarityError):
 
 class ArxivUnavailableError(PaperSimilarityError):
     """The arXiv API kept failing after all retries."""
+
+
+class VectorStoreError(PaperSimilarityError):
+    """The vector store rejected a request (a permanent error, not an outage)."""
+
+
+class CollectionMissingError(VectorStoreError):
+    """The vector collection does not exist (e.g. Qdrant storage was wiped)."""
+
+
+class IndexModelMismatchError(VectorStoreError):
+    """The vector index was built by a different embedding model; it must be rebuilt."""

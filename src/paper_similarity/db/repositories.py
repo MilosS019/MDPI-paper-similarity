@@ -213,14 +213,15 @@ class PaperRepository:
         )
         return {row.arxiv_id: _row_to_paper(row) for row in rows}
 
-    async def counts(self) -> tuple[int, int]:
-        """Return ``(total papers, papers with an up-to-date vector)``."""
+    async def counts(self, embedding_model: str) -> tuple[int, int]:
+        """Return ``(total papers, papers with an up-to-date vector from this model)``."""
+        indexed_now = and_(
+            ArxivPaperRow.indexed_at.is_not(None),
+            ArxivPaperRow.embedding_model == embedding_model,
+        )
         total, indexed = (
             await self._session.execute(
-                select(
-                    func.count(),
-                    func.count(ArxivPaperRow.indexed_at),
-                ).select_from(ArxivPaperRow)
+                select(func.count(), func.count().filter(indexed_now)).select_from(ArxivPaperRow)
             )
         ).one()
         return int(total), int(indexed)

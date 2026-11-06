@@ -8,11 +8,13 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from fastapi import FastAPI
+from qdrant_client.http.models import Distance, VectorParams
 
 from paper_similarity.api.app import create_app
 from paper_similarity.bootstrap import Resources, create_resources
 from paper_similarity.core.config import Settings
 from paper_similarity.db.repositories import PaperRepository
+from paper_similarity.domain.errors import IndexModelMismatchError
 from paper_similarity.domain.models import ArxivPaper
 from paper_similarity.services.indexing import IndexingService
 from tests.fakes import HashingEmbedder
@@ -349,3 +351,33 @@ async def test_metrics_are_exposed(client: httpx.AsyncClient) -> None:
     text = (await client.get("/metrics")).text
     assert 'http_requests_total{handler="/api/v1/papers",method="POST",status="201"}' in text
     assert 'pulse_embeddings_computed_total{purpose="submission_chunk"}' in text
+
+
+@pytest.mark.usefixtures("indexed_corpus")
+async def test_collection_wiped_while_running_is_recreated(
+    client: httpx.AsyncClient, resources: Resources
+) -> None:
+    paper_id = await submit(client, "protein folding in yeast cells")
+    await resources.qdrant.delete_collection(resources.settings.qdrant_collection)
+
+    response = await client.get(f"/api/v1/posts/{paper_id}/similar")
+
+    assert response.status_code == 200  # recreated and answered, not a 5xx loop
+    assert response.json()["matches"] == []
+    assert await resources.qdrant.collection_exists(resources.settings.qdrant_collection)
+
+
+async def test_startup_refuses_an_index_built_by_another_model(
+    settings: Settings, resources: Resources
+) -> None:
+    # Same dimension, different model: vectors would be silently incomparable.
+    await resources.qdrant.delete_collection(settings.qdrant_collection)
+    await resources.qdrant.create_collection(
+        settings.qdrant_collection,
+        vectors_config=VectorParams(size=HashingEmbedder.dimension, distance=Distance.COSINE),
+        metadata={"embedding_model": "some/other-model"},
+    )
+
+    with pytest.raises(IndexModelMismatchError, match="some/other-model"):
+        async with running_app(settings):
+            pass

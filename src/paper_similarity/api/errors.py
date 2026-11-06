@@ -19,7 +19,9 @@ from paper_similarity.api.schemas import Problem
 from paper_similarity.domain.errors import (
     DependencyUnavailableError,
     EmptyTextError,
+    IndexModelMismatchError,
     SubmissionNotFoundError,
+    VectorStoreError,
 )
 
 log = structlog.get_logger(__name__)
@@ -102,6 +104,25 @@ def register_error_handlers(app: FastAPI) -> None:
             f"The {exc.dependency} is not reachable. Please retry shortly.",
             problem_type="dependency-unavailable",
             headers={"Retry-After": "5"},
+        )
+
+    @app.exception_handler(IndexModelMismatchError)
+    async def _index_mismatch(request: Request, exc: IndexModelMismatchError) -> JSONResponse:
+        # A deployment problem, not an outage: no Retry-After, operators must reindex.
+        log.error("search_index_model_mismatch", error=str(exc))
+        return problem_response(
+            request,
+            503,
+            "Search index unavailable",
+            "The search index does not match the configured embedding model.",
+            problem_type="index-mismatch",
+        )
+
+    @app.exception_handler(VectorStoreError)
+    async def _vector_store(request: Request, exc: VectorStoreError) -> JSONResponse:
+        log.error("vector_store_error", error=str(exc))
+        return problem_response(
+            request, 500, "Internal server error", "The search request could not be completed."
         )
 
     # SQLAlchemy wraps most driver errors, but asyncpg raises plain socket errors when it

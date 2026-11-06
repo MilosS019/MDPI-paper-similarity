@@ -51,7 +51,10 @@ def create_resources(settings: Settings, embedder: Embedder | None = None) -> Re
         session_factory=create_session_factory(engine),
         qdrant=qdrant,
         vector_store=QdrantVectorStore(
-            qdrant, settings.qdrant_collection, resolved_embedder.dimension
+            qdrant,
+            settings.qdrant_collection,
+            resolved_embedder.dimension,
+            resolved_embedder.model_name,
         ),
         embedder=resolved_embedder,
     )

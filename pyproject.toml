@@ -85,4 +85,8 @@ markers = [
     "model: downloads and runs the real embedding model (slow, opt-in)",
 ]
 addopts = "-ra --strict-markers -m 'not model'"
-filterwarnings = ["ignore::DeprecationWarning:testcontainers.*"]
+filterwarnings = [
+    "ignore::DeprecationWarning:testcontainers.*",
+    # Local (in-memory) Qdrant ignores payload indexes; the real server uses them.
+    "ignore:Payload indexes have no effect in the local Qdrant:UserWarning",
+]

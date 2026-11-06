@@ -43,6 +43,7 @@ class Settings(BaseSettings):
 
     # Submissions / similarity
     max_submission_chars: int = Field(default=100_000, ge=1)
+    # Capped at the embedding model's own input limit at startup.
     chunk_max_tokens: int = Field(default=512, ge=16)
     chunk_overlap_tokens: int = Field(default=64, ge=0)
 
@@ -52,8 +53,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _check_chunking(self) -> "Settings":
-        if self.chunk_overlap_tokens >= self.chunk_max_tokens:
-            raise ValueError("chunk_overlap_tokens must be smaller than chunk_max_tokens")
+        # Each window holds chunk_max_tokens - 2 content tokens ([CLS] and [SEP] are added).
+        if self.chunk_overlap_tokens >= self.chunk_max_tokens - 2:
+            raise ValueError("chunk_overlap_tokens must be smaller than chunk_max_tokens - 2")
         return self
 
 

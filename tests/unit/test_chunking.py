@@ -1,8 +1,10 @@
 import itertools
 
 import pytest
+from pydantic import ValidationError
 
-from paper_similarity.embeddings.chunking import SPECIAL_TOKENS, chunk_text
+from paper_similarity.core.config import Settings
+from paper_similarity.embeddings.chunking import SPECIAL_TOKENS, chunk_text, effective_chunk_window
 from tests.fakes import HashingEmbedder
 
 offsets = HashingEmbedder().token_offsets
@@ -59,3 +61,22 @@ def test_no_window_exceeds_the_model_limit() -> None:
 def test_invalid_parameters_are_rejected(max_tokens: int, overlap: int) -> None:
     with pytest.raises(ValueError):
         chunk_text("some text", offsets, max_tokens=max_tokens, overlap_tokens=overlap)
+
+
+def test_effective_window_is_capped_at_the_model_limit() -> None:
+    assert effective_chunk_window(2048, model_limit=512, overlap=64) == 512
+    assert effective_chunk_window(256, model_limit=512, overlap=64) == 256
+
+
+@pytest.mark.parametrize(("requested", "overlap"), [(128, 126), (128, 127), (2048, 510)])
+def test_effective_window_rejects_overlap_that_fills_the_window(
+    requested: int, overlap: int
+) -> None:
+    with pytest.raises(ValueError, match="overlap"):
+        effective_chunk_window(requested, model_limit=512, overlap=overlap)
+
+
+@pytest.mark.parametrize("overlap", [126, 127])
+def test_settings_reject_overlap_that_leaves_no_new_tokens(overlap: int) -> None:
+    with pytest.raises(ValidationError, match="chunk_overlap_tokens"):
+        Settings(chunk_max_tokens=128, chunk_overlap_tokens=overlap, _env_file=None)

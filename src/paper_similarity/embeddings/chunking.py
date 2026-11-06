@@ -3,19 +3,42 @@
 The model reads at most ``max_tokens`` tokens (512 for bge-small, including the two special
 tokens it adds) and silently ignores the rest. Chunking makes the whole manuscript count:
 each window is embedded separately and the similarity search keeps, for every indexed paper,
-the best-matching chunk (see ``services.similarity``).
+the best-matching chunk (see ``services.ranking``).
 
 Windows overlap so that a sentence cut at one boundary appears whole in the next window.
 """
 
 from collections.abc import Callable
 
+import structlog
+
 from paper_similarity.domain.models import TextChunk
+
+log = structlog.get_logger(__name__)
 
 # [CLS] and [SEP] are added by the model to every input.
 SPECIAL_TOKENS = 2
 
 TokenOffsets = Callable[[str], list[tuple[int, int]]]
+
+
+def effective_chunk_window(requested: int, model_limit: int, overlap: int) -> int:
+    """The chunk size to use: the configured size, but never more than the model reads.
+
+    A larger window would be silently truncated by the model. Raises ``ValueError`` (at
+    startup) if the overlap leaves no room for new tokens in each window.
+    """
+    window = min(requested, model_limit)
+    if window < requested:
+        log.warning(
+            "chunk_window_capped_to_model_limit", requested=requested, model_limit=model_limit
+        )
+    if overlap >= window - SPECIAL_TOKENS:
+        raise ValueError(
+            f"chunk overlap ({overlap}) must be smaller than the chunk content window "
+            f"({window} - {SPECIAL_TOKENS} special tokens = {window - SPECIAL_TOKENS})"
+        )
+    return window
 
 
 def chunk_text(

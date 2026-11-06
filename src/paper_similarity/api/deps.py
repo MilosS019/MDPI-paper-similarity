@@ -22,7 +22,7 @@ def get_submission_service(resources: ResourcesDep) -> SubmissionService:
         resources.session_factory,
         resources.embedder,
         resources.vector_store,
-        chunk_max_tokens=settings.chunk_max_tokens,
+        chunk_max_tokens=resources.chunk_max_tokens,
         chunk_overlap_tokens=settings.chunk_overlap_tokens,
     )
 

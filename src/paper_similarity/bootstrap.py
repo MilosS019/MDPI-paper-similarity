@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from paper_similarity.core.config import Settings
 from paper_similarity.db.session import create_engine, create_session_factory
 from paper_similarity.embeddings.base import Embedder
+from paper_similarity.embeddings.chunking import effective_chunk_window
 from paper_similarity.vectorstore.qdrant_store import QdrantVectorStore
 
 
@@ -23,6 +24,8 @@ class Resources:
     qdrant: AsyncQdrantClient
     vector_store: QdrantVectorStore
     embedder: Embedder
+    # Effective chunk window: the configured size, capped at what the model can read.
+    chunk_max_tokens: int
 
     async def close(self) -> None:
         await self.qdrant.close()
@@ -34,17 +37,18 @@ def load_embedder(settings: Settings) -> Embedder:
     # by every caller (e.g. tests that inject a fake).
     from paper_similarity.embeddings.fastembed_embedder import FastEmbedEmbedder
 
-    return FastEmbedEmbedder(
-        settings.embedding_model,
-        cache_dir=settings.embedding_cache_dir,
-        max_tokens=settings.chunk_max_tokens,
-    )
+    return FastEmbedEmbedder(settings.embedding_model, cache_dir=settings.embedding_cache_dir)
 
 
 def create_resources(settings: Settings, embedder: Embedder | None = None) -> Resources:
     engine = create_engine(settings.database_url)
     qdrant = AsyncQdrantClient(url=settings.qdrant_url, timeout=settings.qdrant_timeout_seconds)
     resolved_embedder = embedder or load_embedder(settings)
+    chunk_max_tokens = effective_chunk_window(
+        settings.chunk_max_tokens,
+        resolved_embedder.max_tokens,
+        settings.chunk_overlap_tokens,
+    )
     return Resources(
         settings=settings,
         engine=engine,
@@ -57,4 +61,5 @@ def create_resources(settings: Settings, embedder: Embedder | None = None) -> Re
             resolved_embedder.model_name,
         ),
         embedder=resolved_embedder,
+        chunk_max_tokens=chunk_max_tokens,
     )

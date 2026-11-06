@@ -18,7 +18,6 @@ class FastEmbedEmbedder:
         *,
         cache_dir: Path | None = None,
         batch_size: int = 32,
-        max_tokens: int = 512,
     ) -> None:
         log.info("embedding_model_loading", model=model_name)
         self._model = TextEmbedding(
@@ -27,10 +26,17 @@ class FastEmbedEmbedder:
         )
         self._model_name = model_name
         self._batch_size = batch_size
-        self._max_tokens = max_tokens
         self._dimension = int(TextEmbedding.get_embedding_size(model_name))
+        # The model's real input limit: fastembed configures its tokenizer to truncate there.
+        truncation = self._model.model.tokenizer.truncation  # type: ignore[attr-defined]
+        self._max_tokens = int(truncation["max_length"]) if truncation else 512
         self._tokenizer = self._load_untruncated_tokenizer()
-        log.info("embedding_model_loaded", model=model_name, dimension=self._dimension)
+        log.info(
+            "embedding_model_loaded",
+            model=model_name,
+            dimension=self._dimension,
+            max_tokens=self._max_tokens,
+        )
 
     def _load_untruncated_tokenizer(self) -> Tokenizer:
         # fastembed truncates at 512 tokens internally. For chunking we need offsets of the

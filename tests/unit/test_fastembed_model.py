@@ -22,6 +22,7 @@ def dot(a: list[float], b: list[float]) -> float:
 def test_vectors_are_normalised_and_have_expected_dimension(embedder: FastEmbedEmbedder) -> None:
     [vector] = embedder.embed(["Dense passage retrieval for open-domain question answering."])
     assert len(vector) == embedder.dimension == 384
+    assert embedder.max_tokens == 512  # read from the model's tokenizer, not configured
     assert math.isclose(math.sqrt(dot(vector, vector)), 1.0, rel_tol=1e-5)
 
 

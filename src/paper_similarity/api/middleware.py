@@ -6,9 +6,10 @@ import uuid
 
 import structlog
 from starlette.datastructures import MutableHeaders
+from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from paper_similarity.api.errors import PROBLEM_JSON, internal_error_body
+from paper_similarity.api.errors import PROBLEM_JSON, internal_error_body, problem_body
 
 log = structlog.get_logger("paper_similarity.access")
 
@@ -83,3 +84,60 @@ class RequestContextMiddleware:
                     duration_ms=round((time.perf_counter() - started) * 1000, 1),
                 )
             structlog.contextvars.clear_contextvars()
+
+
+class BodySizeLimitMiddleware:
+    """Reject request bodies above ``max_bytes`` with 413, before they are read and parsed.
+
+    FastAPI parses the whole JSON body before a route can check the text length, so without
+    this a client could make the server buffer and parse an arbitrarily large payload. A
+    declared ``Content-Length`` is checked up front; chunked bodies are counted as they arrive
+    (FastAPI passes an ``HTTPException`` raised while reading the body through to the handler).
+    """
+
+    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        declared = dict(scope.get("headers", [])).get(b"content-length")
+        if declared is not None and declared.isdigit() and int(declared) > self.max_bytes:
+            await self._reject(scope, send)
+            return
+
+        received = 0
+
+        async def limited_receive() -> Message:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self.max_bytes:
+                    raise HTTPException(status_code=413, detail="Request body too large")
+            return message
+
+        await self.app(scope, limited_receive, send)
+
+    async def _reject(self, scope: Scope, send: Send) -> None:
+        body = problem_body(
+            status=413,
+            title="Request body too large",
+            detail=f"The request body exceeds {self.max_bytes} bytes.",
+            path=scope.get("path", ""),
+            request_id=scope.get("state", {}).get("request_id"),
+        )
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    (b"content-type", PROBLEM_JSON.encode()),
+                    (b"content-length", str(len(body)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})

@@ -452,3 +452,31 @@ async def test_database_timeouts_are_503(
 
     assert_problem(response, 503)
     assert response.headers["retry-after"] == "5"
+
+
+async def test_oversized_body_is_rejected_before_parsing(
+    settings: Settings, resources: Resources
+) -> None:
+    small = settings.model_copy(update={"max_submission_chars": 100})  # body limit ~17 KB
+    async with running_app(small) as api:
+        declared = await api.post(
+            "/api/v1/papers",
+            content=b'{"text": "' + b"x" * 50_000 + b'"}',
+            headers={"content-type": "application/json", "X-Request-ID": "big-1"},
+        )
+
+        async def chunks() -> AsyncIterator[bytes]:  # no Content-Length: counted as it arrives
+            yield b'{"text": "'
+            for _ in range(50):
+                yield b"x" * 1000
+            yield b'"}'
+
+        streamed = await api.post(
+            "/api/v1/papers", content=chunks(), headers={"content-type": "application/json"}
+        )
+        normal = await api.post("/api/v1/papers", json={"text": "fits easily"})
+
+    body = assert_problem(declared, 413)
+    assert body["request_id"] == "big-1"
+    assert_problem(streamed, 413)
+    assert normal.status_code == 201

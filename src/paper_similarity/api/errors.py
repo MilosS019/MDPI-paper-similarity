@@ -63,17 +63,24 @@ def problem_response(
     )
 
 
+def problem_body(
+    *, status: int, title: str, detail: str, path: str, request_id: str | None
+) -> bytes:
+    """A serialised problem document, for middleware that answers outside FastAPI's routing."""
+    body = Problem(title=title, status=status, detail=detail, instance=path, request_id=request_id)
+    return body.model_dump_json(exclude_none=True).encode()
+
+
 def internal_error_body(path: str, request_id: str) -> bytes:
     """The generic 500 body. Used by the request middleware, which handles unexpected errors
     itself so the response and the logged traceback both carry the request id."""
-    body = Problem(
-        title="Internal server error",
+    return problem_body(
         status=500,
+        title="Internal server error",
         detail="An unexpected error occurred. Quote the request id when reporting it.",
-        instance=path,
+        path=path,
         request_id=request_id,
     )
-    return body.model_dump_json(exclude_none=True).encode()
 
 
 def register_error_handlers(app: FastAPI) -> None:

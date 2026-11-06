@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from paper_similarity.api.errors import register_error_handlers
-from paper_similarity.api.middleware import RequestContextMiddleware
+from paper_similarity.api.middleware import BodySizeLimitMiddleware, RequestContextMiddleware
 from paper_similarity.api.routes_health import router as health_router
 from paper_similarity.api.routes_papers import router as papers_router
 from paper_similarity.bootstrap import Resources, create_resources
@@ -59,6 +59,12 @@ def create_app(
             "`application/problem+json`."
         ),
         lifespan=lifespan,
+    )
+    # Added first, so it runs inside the request-context middleware and a 413 still
+    # carries the request id. A JSON-escaped character takes at most 6 bytes (a unicode
+    # escape), plus room for the title and the JSON structure.
+    app.add_middleware(
+        BodySizeLimitMiddleware, max_bytes=settings.max_submission_chars * 6 + 16_384
     )
     app.add_middleware(RequestContextMiddleware)
     register_error_handlers(app)

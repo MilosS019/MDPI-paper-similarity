@@ -20,6 +20,7 @@ from sqlalchemy import (
     null,
     or_,
     select,
+    tuple_,
     update,
 )
 from sqlalchemy.dialects.postgresql import insert
@@ -165,23 +166,20 @@ class PaperRepository:
         updated = len(flags) - inserted
         return UpsertResult(inserted=inserted, updated=updated, unchanged=len(unique) - len(flags))
 
-    async def pending(
-        self, embedding_model: str, limit: int, *, after_id: int = 0
-    ) -> list[PendingPaper]:
-        """Papers whose vector is missing, or was built with a different model.
+    async def pending(self, limit: int, *, after_id: int = 0) -> list[PendingPaper]:
+        """Papers whose vector is missing or stale (``indexed_at IS NULL``).
+
+        Served by the partial index ``ix_arxiv_papers_pending``, so the cost depends on the
+        number of pending rows, not the table size. A model change does not need a separate
+        condition here: the vector store refuses a collection built by another model, and
+        ``pulse reindex`` resets ``indexed_at`` for every row.
 
         Keyset pagination (``id > after_id``) guarantees a single pass over the rows even if
         some of them stay pending, so callers can loop until an empty batch.
         """
         stmt = (
             select(ArxivPaperRow)
-            .where(
-                ArxivPaperRow.id > after_id,
-                or_(
-                    ArxivPaperRow.indexed_at.is_(None),
-                    ArxivPaperRow.embedding_model.is_distinct_from(embedding_model),
-                ),
-            )
+            .where(ArxivPaperRow.id > after_id, ArxivPaperRow.indexed_at.is_(None))
             .order_by(ArxivPaperRow.id)
             .limit(limit)
         )
@@ -201,17 +199,21 @@ class PaperRepository:
         return result
 
     async def mark_indexed(self, items: Sequence[PendingPaper], embedding_model: str) -> None:
-        """Mark papers as indexed, but only if their text did not change in the meantime."""
-        now = datetime.now(UTC)
-        for item in items:
-            await self._session.execute(
-                update(ArxivPaperRow)
-                .where(
-                    ArxivPaperRow.arxiv_id == item.arxiv_id,
-                    ArxivPaperRow.content_hash == item.content_hash,
+        """Mark papers as indexed, but only if their text did not change in the meantime.
+
+        One statement for the whole batch: ``WHERE (arxiv_id, content_hash) IN (...)``.
+        """
+        if not items:
+            return
+        await self._session.execute(
+            update(ArxivPaperRow)
+            .where(
+                tuple_(ArxivPaperRow.arxiv_id, ArxivPaperRow.content_hash).in_(
+                    [(item.arxiv_id, item.content_hash) for item in items]
                 )
-                .values(indexed_at=now, embedding_model=embedding_model)
             )
+            .values(indexed_at=datetime.now(UTC), embedding_model=embedding_model)
+        )
 
     async def reset_index_state(self) -> int:
         """Mark every paper as needing a new vector (used by a full reindex)."""

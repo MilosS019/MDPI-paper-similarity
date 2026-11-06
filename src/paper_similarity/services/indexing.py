@@ -40,9 +40,7 @@ class IndexingService:
         after_id = 0
         while True:
             async with self._session_factory() as session:
-                batch = await PaperRepository(session).pending(
-                    self._embedder.model_name, self._batch_size, after_id=after_id
-                )
+                batch = await PaperRepository(session).pending(self._batch_size, after_id=after_id)
             if not batch:
                 break
             after_id = batch[-1].id

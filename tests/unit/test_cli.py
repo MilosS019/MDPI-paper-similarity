@@ -79,3 +79,15 @@ def test_invalid_arguments_are_rejected() -> None:
     bad_sort = runner.invoke(cli.app, ["ingest", "-q", "cat:cs.CL", "--sort-by", "random"])
     assert bad_sort.exit_code == 2
     assert runner.invoke(cli.app, ["ingest", "-q", "cat:cs.CL", "--max", "0"]).exit_code == 2
+
+
+def test_corrupt_raw_file_gives_a_clear_error(tmp_path: Path) -> None:
+    broken = tmp_path / "raw" / "run_ts=2026-01-01T00-00-00Z" / "part-00000-deadbeef.parquet"
+    broken.parent.mkdir(parents=True)
+    broken.write_bytes(b"this is not parquet")
+
+    result = runner.invoke(cli.app, ["stats"])
+
+    assert result.exit_code == 1
+    assert "Reading raw data failed:" in result.output
+    assert "Traceback" not in result.output

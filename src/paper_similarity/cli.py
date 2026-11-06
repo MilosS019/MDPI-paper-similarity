@@ -9,6 +9,7 @@ import asyncio
 from enum import StrEnum
 from typing import Annotated
 
+import duckdb
 import httpx
 import typer
 from sqlalchemy.exc import SQLAlchemyError
@@ -39,7 +40,7 @@ class SortOption(StrEnum):
 
 # Expected operational failures: reported as one clear line and a non-zero exit code instead
 # of a traceback. Anything else is a bug and keeps its traceback.
-FAILURES = (PaperSimilarityError, SQLAlchemyError, OSError)
+FAILURES = (PaperSimilarityError, SQLAlchemyError, OSError, duckdb.Error)
 
 USER_AGENT = "paper-similarity/0.1 (arXiv ingestion for a similarity search demo)"
 
@@ -190,7 +191,11 @@ def reindex(
 def stats() -> None:
     """Summarise the raw landing zone with DuckDB: runs, papers, top categories."""
     settings = _setup()
-    summary = RawParquetReader(settings.raw_data_dir).summary()
+    try:
+        summary = RawParquetReader(settings.raw_data_dir).summary()
+    except FAILURES as exc:
+        typer.secho(f"Reading raw data failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
     if summary is None:
         typer.echo(f"No raw data under {settings.raw_data_dir}. Run `pulse ingest` first.")
         return

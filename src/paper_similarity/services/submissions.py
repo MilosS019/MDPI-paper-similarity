@@ -72,17 +72,9 @@ class SubmissionService:
         self, submission_id: uuid.UUID, limit: int
     ) -> tuple[Submission, list[SimilarMatch]]:
         submission = await self.get(submission_id)
-        vectors = [c.vector for c in submission.chunks]
         if submission.embedding_model != self._embedder.model_name:
-            # Stored vectors came from another model and are not comparable with the index.
-            # The text is stored, so re-embed it with the current model instead of failing.
-            log.info(
-                "submission_reembedded",
-                submission_id=str(submission_id),
-                stored_model=submission.embedding_model,
-                current_model=self._embedder.model_name,
-            )
-            vectors = [c.vector for c in await self._embed(submission.title, submission.text)]
+            submission = await self._reembed(submission)
+        vectors = [c.vector for c in submission.chunks]
 
         hits_per_chunk = await self._store.search_batch(vectors, limit + ORPHAN_BUFFER)
         ranked = aggregate_max(hits_per_chunk)
@@ -112,6 +104,27 @@ class SubmissionService:
                 break
         metrics.SIMILARITY_RESULTS.observe(len(matches))
         return submission, matches
+
+    async def _reembed(self, submission: Submission) -> Submission:
+        """Stored vectors came from another model and are not comparable with the index.
+
+        The text is stored, so re-embed it with the current model and save the result: this
+        happens once per submission, and the stored chunks (and the ``matched_chunk`` numbers
+        returned to clients) stay consistent with the vectors actually used for the search.
+        """
+        chunks = await self._embed(submission.title, submission.text)
+        async with self._session_factory() as session, session.begin():
+            replaced = await SubmissionRepository(session).replace_embedding(
+                submission.id, self._embedder.model_name, chunks
+            )
+        log.info(
+            "submission_reembedded",
+            submission_id=str(submission.id),
+            stored_model=submission.embedding_model,
+            current_model=self._embedder.model_name,
+            replaced=replaced,
+        )
+        return await self.get(submission.id)
 
     async def _embed(self, title: str | None, text: str) -> list[EmbeddedChunk]:
         source = build_embedding_text(title, text)

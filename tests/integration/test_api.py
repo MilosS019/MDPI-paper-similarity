@@ -9,10 +9,12 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from qdrant_client.http.models import Distance, VectorParams
+from sqlalchemy import update
 
 from paper_similarity.api.app import create_app
 from paper_similarity.bootstrap import Resources, create_resources
 from paper_similarity.core.config import Settings
+from paper_similarity.db.models import SubmissionRow
 from paper_similarity.db.repositories import PaperRepository
 from paper_similarity.domain.errors import IndexModelMismatchError
 from paper_similarity.domain.models import ArxivPaper
@@ -381,3 +383,25 @@ async def test_startup_refuses_an_index_built_by_another_model(
     with pytest.raises(IndexModelMismatchError, match="some/other-model"):
         async with running_app(settings):
             pass
+
+
+@pytest.mark.usefixtures("indexed_corpus")
+async def test_submission_from_an_old_model_is_reembedded_once_and_saved(
+    client: httpx.AsyncClient, resources: Resources
+) -> None:
+    paper_id = await submit(client, "protein folding in yeast cells")
+    async with resources.session_factory() as session, session.begin():
+        await session.execute(
+            update(SubmissionRow)
+            .where(SubmissionRow.id == paper_id)
+            .values(embedding_model="old/model")
+        )
+
+    first = (await client.get(f"/api/v1/posts/{paper_id}/similar")).json()
+
+    assert first["embedding_model"] == HashingEmbedder.model_name  # the model actually used
+    assert first["matches"][0]["arxiv_id"] == "2401.00002"
+    stored = (await client.get(f"/api/v1/papers/{paper_id}")).json()
+    assert stored["embedding_model"] == HashingEmbedder.model_name  # saved, not redone per call
+    assert stored["chunks"] == 1
+    assert (await client.get(f"/api/v1/posts/{paper_id}/similar")).json() == first

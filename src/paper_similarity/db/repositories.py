@@ -14,6 +14,7 @@ from sqlalchemy import (
     ColumnElement,
     and_,
     case,
+    delete,
     func,
     literal_column,
     null,
@@ -250,6 +251,42 @@ class SubmissionRepository:
         )
         self._session.add(row)
         await self._session.flush()
+
+    async def replace_embedding(
+        self, submission_id: UUID, embedding_model: str, chunks: Sequence[EmbeddedChunk]
+    ) -> bool:
+        """Replace a submission's chunk vectors with ones from ``embedding_model``.
+
+        Locks the submission row first, so concurrent requests re-embedding the same
+        submission do the swap once. Returns False if it was already up to date (or gone).
+        """
+        current = await self._session.scalar(
+            select(SubmissionRow.embedding_model)
+            .where(SubmissionRow.id == submission_id)
+            .with_for_update()
+        )
+        if current is None or current == embedding_model:
+            return False
+        await self._session.execute(
+            delete(SubmissionChunkRow).where(SubmissionChunkRow.submission_id == submission_id)
+        )
+        self._session.add_all(
+            SubmissionChunkRow(
+                submission_id=submission_id,
+                chunk_index=c.chunk.index,
+                char_start=c.chunk.char_start,
+                char_end=c.chunk.char_end,
+                vector=c.vector,
+            )
+            for c in chunks
+        )
+        await self._session.execute(
+            update(SubmissionRow)
+            .where(SubmissionRow.id == submission_id)
+            .values(embedding_model=embedding_model)
+        )
+        await self._session.flush()
+        return True
 
     async def get(self, submission_id: UUID) -> Submission | None:
         row = await self._session.get(SubmissionRow, submission_id)

@@ -57,10 +57,14 @@ class ReindexService:
             updated += result.updated
             unchanged += result.unchanged
 
-        await self._store.recreate()
+        # Mark every row as pending *before* touching Qdrant. If the run stops after this
+        # point, the rows stay pending and `pulse index` (or rerunning reindex) finishes the
+        # job. The reverse order could leave an empty collection while every row claimed to be
+        # indexed, which nothing would repair.
         async with self._session_factory() as session, session.begin():
             reset = await PaperRepository(session).reset_index_state()
         log.info("reindex_index_reset", papers=reset)
+        await self._store.recreate()
 
         indexed = await self._indexer.index_pending()
         report = ReindexReport(

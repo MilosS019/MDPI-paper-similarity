@@ -210,3 +210,33 @@ async def test_reindex_rebuilds_database_and_index_from_raw_files(
     assert await resources.vector_store.count() == 3
     assert arxiv.calls.call_count == 1  # arXiv was not called again
 
+
+async def test_reindex_interrupted_after_reset_is_healed_by_index(
+    resources: Resources,
+    http: httpx.AsyncClient,
+    arxiv: respx.Router,
+    fixture_bytes: FixtureLoader,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    arxiv.get(ARXIV).respond(200, content=fixture_bytes("arxiv_page.xml"))
+    await make_pipeline(resources, http).run("cat:cs.CL", max_results=3)
+    indexer = IndexingService(resources.session_factory, resources.embedder, resources.vector_store)
+    service = ReindexService(
+        resources.session_factory,
+        RawParquetReader(resources.settings.raw_data_dir),
+        indexer,
+        resources.vector_store,
+    )
+
+    async def crash() -> None:
+        raise RuntimeError("killed while recreating the collection")
+
+    monkeypatch.setattr(resources.vector_store, "recreate", crash)
+    with pytest.raises(RuntimeError):
+        await service.run(from_raw=False)
+
+    # Rows were reset before Qdrant was touched, so nothing claims to be indexed...
+    assert await db_counts(resources) == (3, 0)
+    # ...and a plain `pulse index` finishes the job.
+    assert await indexer.index_pending() == 3
+    assert await db_counts(resources) == (3, 3)

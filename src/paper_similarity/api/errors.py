@@ -13,6 +13,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from paper_similarity.api.schemas import Problem
@@ -60,6 +61,19 @@ def problem_response(
         media_type=PROBLEM_JSON,
         headers=headers,
     )
+
+
+def internal_error_body(path: str, request_id: str) -> bytes:
+    """The generic 500 body. Used by the request middleware, which handles unexpected errors
+    itself so the response and the logged traceback both carry the request id."""
+    body = Problem(
+        title="Internal server error",
+        status=500,
+        detail="An unexpected error occurred. Quote the request id when reporting it.",
+        instance=path,
+        request_id=request_id,
+    )
+    return body.model_dump_json(exclude_none=True).encode()
 
 
 def register_error_handlers(app: FastAPI) -> None:
@@ -125,12 +139,16 @@ def register_error_handlers(app: FastAPI) -> None:
             request, 500, "Internal server error", "The search request could not be completed."
         )
 
-    # SQLAlchemy wraps most driver errors, but asyncpg raises plain socket errors when it
-    # cannot connect at all. Qdrant failures are already translated in the vector store, so
-    # an untranslated connection error here comes from the database.
+    # Database outages. SQLAlchemy wraps most driver errors (OperationalError, InterfaceError),
+    # but asyncpg raises plain socket errors when it cannot connect at all and a bare
+    # TimeoutError when the server does not answer, and an exhausted pool raises SQLAlchemy's
+    # own TimeoutError. Qdrant and arXiv failures are translated where they happen, so these
+    # remaining connection-level errors come from the database.
     @app.exception_handler(OperationalError)
     @app.exception_handler(InterfaceError)
+    @app.exception_handler(PoolTimeoutError)
     @app.exception_handler(ConnectionError)
+    @app.exception_handler(TimeoutError)
     @app.exception_handler(socket.gaierror)
     async def _database(request: Request, exc: Exception) -> JSONResponse:
         cause = exc.orig if isinstance(exc, DBAPIError) else exc
@@ -150,12 +168,5 @@ def register_error_handlers(app: FastAPI) -> None:
             request, exc.status_code, str(exc.detail), headers=getattr(exc, "headers", None)
         )
 
-    @app.exception_handler(Exception)
-    async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
-        log.exception("unhandled_error", error_type=type(exc).__name__)
-        return problem_response(
-            request,
-            500,
-            "Internal server error",
-            "An unexpected error occurred. Quote the request id when reporting it.",
-        )
+    # Unexpected exceptions are handled in RequestContextMiddleware, not here: Starlette runs
+    # an `Exception` handler outside all middleware, where the request id is already gone.

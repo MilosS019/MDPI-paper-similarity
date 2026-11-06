@@ -10,6 +10,7 @@ import pytest
 from fastapi import FastAPI
 from qdrant_client.http.models import Distance, VectorParams
 from sqlalchemy import update
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from paper_similarity.api.app import create_app
 from paper_similarity.bootstrap import Resources, create_resources
@@ -19,6 +20,7 @@ from paper_similarity.db.repositories import PaperRepository
 from paper_similarity.domain.errors import IndexModelMismatchError
 from paper_similarity.domain.models import ArxivPaper
 from paper_similarity.services.indexing import IndexingService
+from paper_similarity.services.submissions import SubmissionService
 from tests.fakes import HashingEmbedder
 
 CORPUS = {
@@ -405,3 +407,48 @@ async def test_submission_from_an_old_model_is_reembedded_once_and_saved(
     assert stored["embedding_model"] == HashingEmbedder.model_name  # saved, not redone per call
     assert stored["chunks"] == 1
     assert (await client.get(f"/api/v1/posts/{paper_id}/similar")).json() == first
+
+
+async def test_unexpected_error_is_500_with_request_id_in_response_and_logs(
+    client: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def boom(self: SubmissionService, submission_id: UUID) -> None:
+        raise RuntimeError("bug: secret internal detail")
+
+    monkeypatch.setattr(SubmissionService, "get", boom)
+
+    response = await client.get(f"/api/v1/papers/{uuid4()}", headers={"X-Request-ID": "req-500"})
+
+    body = assert_problem(response, 500)
+    assert body["request_id"] == "req-500"
+    assert "secret" not in response.text  # no internals leak to the client
+    # The logged traceback carries the id the client was told to quote.
+    [record] = [
+        r for r in caplog.records if isinstance(r.msg, dict) and r.msg["event"] == "unhandled_error"
+    ]
+    event: dict[str, object] = record.msg  # type: ignore[assignment]
+    assert event["request_id"] == "req-500"
+    assert record.exc_info is not None
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        TimeoutError("connect timed out"),
+        PoolTimeoutError("QueuePool limit of size 10 overflow 5 reached"),
+    ],
+)
+async def test_database_timeouts_are_503(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    async def slow_db(self: SubmissionService, submission_id: UUID) -> None:
+        raise error
+
+    monkeypatch.setattr(SubmissionService, "get", slow_db)
+
+    response = await client.get(f"/api/v1/papers/{uuid4()}")
+
+    assert_problem(response, 503)
+    assert response.headers["retry-after"] == "5"

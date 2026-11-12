@@ -40,11 +40,12 @@ class FastEmbedEmbedder:
 
     def _load_untruncated_tokenizer(self) -> Tokenizer:
         # fastembed truncates at 512 tokens internally. For chunking we need offsets of the
-        # *whole* text, so load the same tokenizer.json from the downloaded model files and
-        # switch truncation and padding off. (``_model_dir`` is not public API; the fastembed
-        # version is pinned in uv.lock and this is covered by the model smoke test.)
-        model_dir = Path(self._model.model._model_dir)  # type: ignore[attr-defined]
-        tokenizer = Tokenizer.from_file(str(model_dir / "tokenizer.json"))
+        # *whole* text, so take a copy of the model's own tokenizer (serialise and reload: the
+        # original must keep truncating) and switch truncation and padding off on the copy.
+        # (``model.tokenizer`` is not documented API; the fastembed version is pinned in
+        # uv.lock and this is covered by the model smoke test.)
+        original: Tokenizer = self._model.model.tokenizer  # type: ignore[attr-defined]
+        tokenizer = Tokenizer.from_str(original.to_str())
         tokenizer.no_truncation()
         tokenizer.no_padding()
         return tokenizer

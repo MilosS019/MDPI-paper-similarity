@@ -61,7 +61,9 @@ submission_chunks
 ```
 
 Qdrant collection `arxiv_papers`: cosine distance, 384 dimensions, point id
-`uuid5(NAMESPACE, arxiv_id)`, payload `{arxiv_id, title}` with a keyword index on `arxiv_id`.
+`uuid5(NAMESPACE, arxiv_id)`, payload `{arxiv_id, title}`. There is no payload index: searches do not filter, and points are
+addressed by id. A filtered search (e.g. by category) would add the field and its index
+together.
 
 ## 3. Flows
 

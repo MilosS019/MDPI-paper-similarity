@@ -23,7 +23,6 @@ from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 from qdrant_client.http.models import (
     Distance,
-    PayloadSchemaType,
     PointStruct,
     QueryRequest,
     VectorParams,
@@ -143,11 +142,6 @@ class QdrantVectorStore:
             collection_name=self._collection,
             vectors_config=VectorParams(size=self._dimension, distance=Distance.COSINE),
             metadata={MODEL_METADATA_KEY: self._model_name},
-        )
-        await self._client.create_payload_index(
-            collection_name=self._collection,
-            field_name="arxiv_id",
-            field_schema=PayloadSchemaType.KEYWORD,
         )
         log.info(
             "qdrant_collection_created",

@@ -180,7 +180,8 @@ Full schema at `/docs` (Swagger UI) and `/openapi.json`.
 | `GET` | `/api/v1/posts/{id}/similar?limit=10` | Similar indexed papers (required endpoint) |
 | `GET` | `/api/v1/papers/{id}/similar?limit=10` | Alias of the above (see [Assumptions](#assumptions)) |
 | `GET` | `/health` | Liveness: the process is up |
-| `GET` | `/ready` | Readiness: Postgres and Qdrant reachable, plus index statistics |
+| `GET` | `/ready` | Readiness: Postgres and Qdrant reachable |
+| `GET` | `/stats` | Papers stored, papers indexed, vectors in Qdrant |
 | `GET` | `/metrics` | Prometheus metrics |
 
 ### Submit a paper
@@ -313,7 +314,7 @@ What is covered, chosen by risk:
 | Ingestion (real DB) | no duplicates on re-ingest, re-embedding only on text change, partial arXiv failure keeps earlier pages, healing an interrupted run, reindex from Parquet without arXiv |
 | Chunking | single chunk when the text fits, overlap, spans map back to the source, no window exceeds the model limit |
 | Ranking | best-chunk aggregation, deterministic ties, a randomised check that per-chunk top-k equals brute-force top-k |
-| API (real DB) | status codes and problem bodies for every error, ranking order, limit, alias path, multi-topic matching, persistence across an app restart, 503 when Postgres or Qdrant is down, health/ready/metrics |
+| API (real DB) | status codes and problem bodies for every error, ranking order, limit, alias path, multi-topic matching, persistence across an app restart, 503 when Postgres or Qdrant is down, health/ready/stats/metrics |
 
 Test limitations:
 - Ranking quality with the real model is not asserted beyond a smoke test (related > unrelated).
@@ -441,8 +442,9 @@ retries and arXiv's quirks explicitly.
 
 **Operations:**
 - Structured JSON logs with request ids, and RFC 9457 errors.
-- `/health` (liveness, no dependencies) vs `/ready` (dependencies plus index statistics),
-  matching Kubernetes probe semantics.
+- `/health` (liveness, no dependencies) vs `/ready` (dependencies), matching Kubernetes
+  probe semantics. Index counts are at `/stats`, not in the probe: exact counts scan the
+  table and the collection, which is too much work to repeat every few seconds.
 - Prometheus metrics per route template, plus ingestion and embedding counters.
 - Migrations run as a separate one-off job before the API starts.
 - One uvicorn worker per container, because the model lives in process memory; scale with

@@ -486,8 +486,6 @@ retries and arXiv's quirks explicitly.
 
 ## 10. Use of AI tools
 
-<!-- TODO(author): review and adjust this section so it accurately reflects your own process. -->
-
 I used **Claude Code** (Anthropic) as a pair-programming assistant throughout:
 
 - **Design discussion:** comparing stack options (pgvector vs Qdrant, chunk averaging vs

@@ -9,7 +9,9 @@ services:
       POSTGRES_PASSWORD: pulse
       POSTGRES_DB: pulse
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Bound to loopback: these are development credentials, not something to expose on
+      # the local network.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -21,7 +23,7 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.20.0
     ports:
-      - "${QDRANT_PORT:-6333}:6333"
+      - "127.0.0.1:${QDRANT_PORT:-6333}:6333"
     volumes:
       - qdrant-data:/qdrant/storage
     healthcheck:
@@ -46,6 +48,7 @@ services:
         condition: service_healthy
 
   api:
+    build: .
     image: paper-similarity:local
     environment: *app-env
     ports:

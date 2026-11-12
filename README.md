@@ -3,7 +3,7 @@
 A Python backend that ingests scientific papers from arXiv, stores vector embeddings of them,
 and returns the indexed papers most similar to a submitted manuscript.
 
-- **Ingestion:** `pulse ingest` pulls papers from the arXiv API. A raw copy goes to Parquet, the
+- **Ingestion:** `pulse ingest` pulls papers from the arXiv API. The parsed records are landed in Parquet, the
   papers go to Postgres, and their embeddings go to Qdrant. It is safe to re-run.
 - **Submit:** `POST /api/v1/papers` validates, chunks, embeds and stores a manuscript.
 - **Similar:** `GET /api/v1/posts/{id}/similar` returns arXiv papers ranked by cosine similarity.
@@ -399,8 +399,10 @@ product and Euclidean distance, and it is the metric bge was trained for.
 - Averaging chunk vectors was rejected: it blurs a multi-topic manuscript into a vector that
   matches nothing well.
 - Short texts are one chunk, which is identical to plain search.
-- Fetching the top `limit` per chunk gives the exact top `limit` overall (proved in
-  `services/ranking.py` and checked by a randomised test).
+- Fetching the top `limit` per chunk loses nothing compared with ranking every paper against
+  every chunk (proved in `services/ranking.py` and checked by a randomised test). That is a
+  statement about the aggregation: each per-chunk search is as exact as Qdrant makes it,
+  which means exact for a small collection and approximate (HNSW) for a large one.
 
 **Submission vectors live in Postgres, not Qdrant.**
 - Submissions are only ever read back by id, never searched. So `POST /papers` is a single
@@ -420,8 +422,10 @@ The arXiv client is written on httpx rather than the `arxiv` package, to control
 retries and arXiv's quirks explicitly.
 
 **Raw landing zone in Parquet, read with DuckDB.**
-- Every run keeps what arXiv returned: an audit trail and the ability to replay. `pulse
-  reindex` rebuilds everything after a model change without calling arXiv again.
+- Every run keeps the records it parsed from arXiv: an audit trail and the ability to replay.
+  `pulse reindex` rebuilds everything after a model change without calling arXiv again.
+- The files hold *parsed* records, not the original Atom XML, and entries the parser skipped
+  are not in them. Replaying after a parser fix would need the XML responses stored as well.
 - It is the usual "bronze layer" of a data pipeline, kept deliberately small.
 - dbt was considered and left out: there is a single transformation (latest version per
   paper). dbt would fit once there are several SQL models on top of the raw data.

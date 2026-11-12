@@ -9,6 +9,10 @@ Exactness: if every chunk query returns its top ``k`` papers, the top ``k`` of t
 ranking is exact. Suppose paper P belongs in the global top k with best chunk c, but P is
 missing from c's top k. Then k papers beat P on chunk c, so each of them has a best score
 above P's, and P is not in the global top k: a contradiction.
+
+This is about the aggregation only: it assumes each chunk query returns its true top ``k``.
+Qdrant scans small collections exhaustively; on a collection large enough to be served by
+HNSW each query is approximate, and so is the aggregated ranking.
 """
 
 from collections.abc import Sequence

@@ -1,7 +1,7 @@
 """Rebuild the database and the vector index from the raw landing zone, without arXiv.
 
-Use cases: switching the embedding model (new vector size), restoring a lost database or
-index, or replaying data after a parser fix.
+Use cases: switching the embedding model (new vector size), or restoring a lost database or
+index. The raw files hold parsed records, so this does not replay a parser fix.
 
 Note: the collection is dropped and rebuilt in place, so similarity results are incomplete
 while the command runs. In production a new collection would be built next to the old one and

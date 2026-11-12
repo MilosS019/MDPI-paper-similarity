@@ -31,7 +31,7 @@ drift apart.
 |---|---|---|---|
 | PostgreSQL | Source of truth | `arxiv_papers`, `submissions`, `submission_chunks` | Parquet (papers only) |
 | Qdrant | Derived search index | one point per arXiv paper (vector + `arxiv_id`, `title`) | Postgres or Parquet |
-| Parquet | Raw landing zone / audit trail | every record each run fetched | arXiv |
+| Parquet | Raw landing zone / audit trail | every record each run parsed (not the Atom XML) | arXiv |
 
 ## 2. Data model
 
@@ -82,7 +82,7 @@ sequenceDiagram
         CLI->>PG: INSERT … ON CONFLICT (arxiv_id) DO UPDATE … WHERE changed  [commit]
     end
     loop pending rows (keyset pages of 64)
-        CLI->>PG: SELECT … WHERE indexed_at IS NULL OR model differs AND id > last
+        CLI->>PG: SELECT … WHERE indexed_at IS NULL AND id > last
         CLI->>EMB: embed("<title>. <abstract>")  (worker thread)
         CLI->>QD: upsert points (wait=true)
         CLI->>PG: SET indexed_at = now() WHERE content_hash unchanged  [commit]
@@ -130,6 +130,10 @@ c, but is missing from c's top-k. Then k papers score higher than P on c, so eac
 score above P's, and P cannot be in the global top-k. That is a contradiction. The `+5` only
 covers dropped orphans. `tests/unit/test_ranking.py` checks this against brute force on random
 data.
+
+The argument assumes each per-chunk search returns its true top-k. Qdrant scans small
+collections exhaustively, so that holds for the demo corpus; once a collection is large enough
+to be served by HNSW, each search is approximate and so is the aggregated ranking.
 
 ## 4. Failure modes
 

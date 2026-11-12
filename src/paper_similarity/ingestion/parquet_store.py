@@ -9,7 +9,10 @@ CronJobs for different queries) write different files instead of overwriting eac
 
 Keeping the raw records means the database and vector index can be rebuilt (for example after
 switching the embedding model) without calling arXiv again, and there is an audit trail of
-what arXiv returned and when. Files are immutable: runs only ever add new files.
+what each run fetched and when. Files are immutable: runs only ever add new files.
+
+The files hold the *parsed* records, not the original Atom XML: entries the parser skipped
+are not in them, so they cannot be used to replay a parser fix.
 """
 
 import uuid

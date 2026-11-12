@@ -90,6 +90,9 @@ Quality checks (also available as pre-commit hooks: `uv run pre-commit install`)
 uv run ruff check . && uv run ruff format --check . && uv run mypy src tests
 ```
 
+The same checks, the full test suite and a Docker image build run on every push and pull
+request ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+
 ## 3. Configuration
 
 All settings are environment variables with the `PULSE_` prefix. A local `.env` file is also

@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from fastapi import FastAPI
+from prometheus_client import REGISTRY
 from qdrant_client.http.models import Distance, VectorParams
 from sqlalchemy import update
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
@@ -375,7 +376,17 @@ async def test_stats_is_503_when_the_vector_store_is_down(
         assert_problem(await api.get("/stats"), 503)
 
 
-async def test_metrics_are_exposed(client: httpx.AsyncClient) -> None:
+@pytest.fixture
+def fresh_http_metrics() -> None:
+    """HTTP metrics live in prometheus_client's process-wide registry, and the instrumentator
+    only records for the app that registered them first. A real process has one app; the test
+    session builds many, so drop the earlier registration to let this test's app record."""
+    names = REGISTRY._collector_to_names  # no public way to list registered collectors
+    for collector in [c for c, owned in names.items() if any(n.startswith("http_") for n in owned)]:
+        REGISTRY.unregister(collector)
+
+
+async def test_metrics_are_exposed(fresh_http_metrics: None, client: httpx.AsyncClient) -> None:
     await submit(client, "count me")
     text = (await client.get("/metrics")).text
     assert 'http_requests_total{handler="/api/v1/papers",method="POST",status="201"}' in text

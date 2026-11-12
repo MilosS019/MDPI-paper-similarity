@@ -267,7 +267,7 @@ document. Its `request_id` matches the `X-Request-ID` response header and the se
 
 | Status | When |
 |---|---|
-| `422` | Invalid body (missing or blank `text`, wrong types, unknown fields, malformed JSON, text too long), malformed id (not a UUID), `limit` out of range |
+| `422` | Invalid body (missing or blank `text`, wrong types, unknown fields, malformed JSON, text too long, NUL characters), malformed id (not a UUID), `limit` out of range |
 | `404` | Well-formed id that does not exist |
 | `413` | Request body larger than the submission limit allows; rejected before the JSON is parsed |
 | `503` (+ `Retry-After`) | Postgres or Qdrant unreachable |

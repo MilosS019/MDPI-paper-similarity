@@ -90,8 +90,8 @@ Quality checks (also available as pre-commit hooks: `uv run pre-commit install`)
 uv run ruff check . && uv run ruff format --check . && uv run mypy src tests
 ```
 
-The same checks, the full test suite and a Docker image build run on every push and pull
-request ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+The same checks, the full test suite and a Docker image build run on every push to `main` and
+every pull request ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ## 3. Configuration
 
@@ -144,7 +144,8 @@ default order is newest submissions first. Examples:
 5. Upserts their vectors into Qdrant.
 
 It prints a summary such as
-`fetched=90 inserted=90 updated=0 unchanged=0 skipped=0 indexed=90`.
+`fetched=90 inserted=90 updated=0 unchanged=0 skipped=0 indexed=90 raw_files=2`
+(`raw_files` is the number of Parquet files written, one per page).
 
 **Re-running is safe:**
 - Papers are keyed by their arXiv id without the version suffix (`2401.12345`), so a run

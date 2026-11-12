@@ -3,6 +3,7 @@
 import uuid
 from datetime import UTC, datetime
 
+import anyio
 import anyio.to_thread
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -33,12 +34,14 @@ class SubmissionService:
         *,
         chunk_max_tokens: int,
         chunk_overlap_tokens: int,
+        embed_limiter: anyio.CapacityLimiter | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._embedder = embedder
         self._store = vector_store
         self._chunk_max_tokens = chunk_max_tokens
         self._chunk_overlap_tokens = chunk_overlap_tokens
+        self._embed_limiter = embed_limiter
 
     async def create(self, title: str | None, text: str) -> Submission:
         """Embed and persist a submission in one database transaction.
@@ -137,9 +140,13 @@ class SubmissionService:
                 self._embedder.token_offsets,
                 max_tokens=self._chunk_max_tokens,
                 overlap_tokens=self._chunk_overlap_tokens,
-            )
+            ),
+            limiter=self._embed_limiter,
         )
         vectors = await embed_in_thread(
-            self._embedder, [c.text for c in chunks], purpose="submission_chunk"
+            self._embedder,
+            [c.text for c in chunks],
+            purpose="submission_chunk",
+            limiter=self._embed_limiter,
         )
         return [EmbeddedChunk(chunk=c, vector=v) for c, v in zip(chunks, vectors, strict=True)]

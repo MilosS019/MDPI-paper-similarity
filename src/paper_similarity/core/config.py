@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Embeddings
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_cache_dir: Path | None = None
+    # Requests that may tokenise/embed at the same time; the rest wait their turn. ONNX
+    # Runtime already uses every core for one batch, so more only adds contention.
+    embedding_concurrency: int = Field(default=2, ge=1)
 
     # arXiv client
     arxiv_base_url: str = "https://export.arxiv.org/api/query"

@@ -103,6 +103,7 @@ read. Every setting has a working default for the compose setup; see
 | `PULSE_QDRANT_URL` | `http://localhost:6333` | Qdrant HTTP endpoint |
 | `PULSE_QDRANT_COLLECTION` | `arxiv_papers` | Collection name |
 | `PULSE_EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Any fastembed model; changing it requires `pulse reindex` |
+| `PULSE_EMBEDDING_CONCURRENCY` | `2` | Requests allowed to embed at once; others queue |
 | `PULSE_ARXIV_PAGE_SIZE` | `50` | Results per arXiv API request |
 | `PULSE_ARXIV_REQUEST_DELAY_SECONDS` | `3.0` | Pause between arXiv requests, as arXiv asks |
 | `PULSE_ARXIV_MAX_ATTEMPTS` | `4` | Total attempts per request (first try + retries) before giving up |
@@ -448,6 +449,8 @@ retries and arXiv's quirks explicitly.
   replicas.
 - CPU-bound tokenising and embedding run in a worker thread so the event loop keeps serving
   other requests (ONNX Runtime releases the GIL).
+- At most `PULSE_EMBEDDING_CONCURRENCY` requests embed at once and the rest queue: one
+  inference already uses every core, so running more in parallel only slows all of them.
 
 ### Assumptions
 

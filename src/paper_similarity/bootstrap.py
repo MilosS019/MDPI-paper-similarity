@@ -6,6 +6,7 @@ their own embedder to avoid loading the real model.
 
 from dataclasses import dataclass
 
+import anyio
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -24,6 +25,8 @@ class Resources:
     qdrant: AsyncQdrantClient
     vector_store: QdrantVectorStore
     embedder: Embedder
+    # Bounds concurrent CPU work (tokenising, embedding) started by API requests.
+    embed_limiter: anyio.CapacityLimiter
     # Effective chunk window: the configured size, capped at what the model can read.
     chunk_max_tokens: int
 
@@ -61,5 +64,6 @@ def create_resources(settings: Settings, embedder: Embedder | None = None) -> Re
             resolved_embedder.model_name,
         ),
         embedder=resolved_embedder,
+        embed_limiter=anyio.CapacityLimiter(settings.embedding_concurrency),
         chunk_max_tokens=chunk_max_tokens,
     )

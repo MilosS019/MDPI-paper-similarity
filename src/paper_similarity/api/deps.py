@@ -24,6 +24,7 @@ def get_submission_service(resources: ResourcesDep) -> SubmissionService:
         resources.vector_store,
         chunk_max_tokens=resources.chunk_max_tokens,
         chunk_overlap_tokens=settings.chunk_overlap_tokens,
+        embed_limiter=resources.embed_limiter,
     )
 
 

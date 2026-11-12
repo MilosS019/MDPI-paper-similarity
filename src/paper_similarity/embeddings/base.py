@@ -8,6 +8,7 @@ import time
 from collections.abc import Sequence
 from typing import Literal, Protocol
 
+import anyio
 import anyio.to_thread
 
 from paper_similarity.core import metrics
@@ -38,15 +39,27 @@ async def embed_in_thread(
     embedder: Embedder,
     texts: Sequence[str],
     purpose: Literal["paper", "submission_chunk"],
+    limiter: anyio.CapacityLimiter | None = None,
 ) -> list[list[float]]:
     """Run the CPU-bound embedding in a worker thread so the event loop keeps serving requests.
 
     ONNX Runtime releases the GIL during inference, so this gives real parallelism.
+
+    ``limiter`` caps how many embeddings run at once; further callers wait. Without it the
+    only bound is anyio's default pool of 40 threads, and one inference already uses every
+    core, so a burst of long submissions would only make all of them slower.
     """
     if not texts:
         return []
-    started = time.perf_counter()
-    vectors = await anyio.to_thread.run_sync(embedder.embed, list(texts))
-    metrics.EMBEDDING_SECONDS.observe(time.perf_counter() - started)
-    metrics.EMBEDDINGS_COMPUTED.labels(purpose=purpose).inc(len(texts))
+    batch = list(texts)
+
+    def timed_embed() -> list[list[float]]:
+        # Timed inside the thread: the metric is inference time, not time spent queueing.
+        started = time.perf_counter()
+        vectors = embedder.embed(batch)
+        metrics.EMBEDDING_SECONDS.observe(time.perf_counter() - started)
+        return vectors
+
+    vectors = await anyio.to_thread.run_sync(timed_embed, limiter=limiter)
+    metrics.EMBEDDINGS_COMPUTED.labels(purpose=purpose).inc(len(batch))
     return vectors

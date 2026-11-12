@@ -153,7 +153,8 @@ The same run again prints `inserted=0 unchanged=90 indexed=0`.
 
 **When arXiv fails:**
 - Timeouts, connection errors, HTTP 429/5xx, arXiv's in-band error responses and its
-  occasional empty pages are retried with exponential backoff.
+  occasional empty pages are retried with exponential backoff. A `Retry-After` header is
+  honoured (capped at 60 s).
 - An invalid query (HTTP 400) fails immediately with arXiv's message.
 - If arXiv stays down partway through, every page fetched so far is still stored and indexed.
   The command then exits with code 1 and can simply be run again.

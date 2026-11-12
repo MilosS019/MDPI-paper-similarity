@@ -6,6 +6,8 @@ Reliability behaviour:
 * Retries with exponential backoff for transient failures: network errors, timeouts, HTTP 429
   and 5xx, arXiv's in-band error entries on a 2xx response, and arXiv's known glitch of
   returning an empty page although more results exist.
+* A ``Retry-After`` header on a 429/5xx response is honoured: the wait is the longer of that
+  and the backoff, capped so a bad header cannot stall a run.
 * Client errors (HTTP 4xx, e.g. an invalid query) are not retried: retrying cannot fix them.
 * At least ``request_delay`` seconds between requests, as arXiv's terms of use ask.
 """
@@ -43,8 +45,23 @@ class ArxivQueryError(PaperSimilarityError):
     """arXiv rejected the request (e.g. invalid query syntax). Not retried."""
 
 
+# Upper bound for any single wait between attempts, whatever the server asks for.
+MAX_WAIT_SECONDS = 60.0
+
+
 class _TransientArxivError(Exception):
     """Internal marker for failures worth retrying."""
+
+    def __init__(self, message: str, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        # Seconds the server asked us to wait (its Retry-After header), if it said.
+        self.retry_after = retry_after
+
+
+def _retry_after_seconds(response: httpx.Response) -> float | None:
+    """The ``Retry-After`` header as seconds. The HTTP-date form is ignored (backoff applies)."""
+    value = response.headers.get("Retry-After", "").strip()
+    return float(value) if value.isdigit() else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,7 +129,7 @@ class ArxivClient:
         retrying = AsyncRetrying(
             retry=retry_if_exception_type(_TransientArxivError),
             stop=stop_after_attempt(self._max_attempts),
-            wait=wait_exponential(multiplier=self._backoff_base, max=60),
+            wait=self._wait,
             sleep=self._sleep,
             before_sleep=self._log_retry,
             reraise=False,
@@ -137,7 +154,9 @@ class ArxivClient:
             raise _TransientArxivError(f"{type(exc).__name__}: {exc}") from exc
 
         if response.status_code == 429 or response.status_code >= 500:
-            raise _TransientArxivError(f"HTTP {response.status_code}")
+            raise _TransientArxivError(
+                f"HTTP {response.status_code}", retry_after=_retry_after_seconds(response)
+            )
 
         try:
             feed = parse_feed(response.content)
@@ -175,6 +194,15 @@ class ArxivClient:
             if remaining > 0:
                 await self._sleep(remaining)
         self._last_request_at = time.monotonic()
+
+    def _wait(self, state: RetryCallState) -> float:
+        """Exponential backoff, or the server's Retry-After if that is longer."""
+        backoff = float(
+            wait_exponential(multiplier=self._backoff_base, max=MAX_WAIT_SECONDS)(state)
+        )
+        exc = state.outcome.exception() if state.outcome else None
+        requested = getattr(exc, "retry_after", None) or 0.0
+        return min(max(backoff, requested), MAX_WAIT_SECONDS)
 
     @staticmethod
     def _log_retry(state: RetryCallState) -> None:

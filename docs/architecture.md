@@ -141,7 +141,7 @@ to be served by HNSW, each search is approximate and so is the aggregated rankin
 
 | Failure | Behaviour | Recovery |
 |---|---|---|
-| arXiv timeout / 5xx / 429 / in-band error / empty page mid-results | Retried with exponential backoff (4 attempts) | Automatic |
+| arXiv timeout / 5xx / 429 / in-band error / empty page mid-results | Retried with exponential backoff (4 attempts); a `Retry-After` header is honoured, capped at 60 s | Automatic |
 | arXiv still failing after retries | Pages already fetched are kept and indexed; CLI exits 1 | Re-run the command |
 | Invalid arXiv query (400) | Fails immediately with arXiv's message, no retries | Fix the query |
 | Malformed entry in a feed | Logged and skipped; the rest of the page is stored | None needed |

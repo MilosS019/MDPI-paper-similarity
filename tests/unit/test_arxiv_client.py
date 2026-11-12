@@ -69,6 +69,23 @@ async def test_retries_transient_server_errors_then_succeeds(fixture_bytes: Fixt
 
 
 @respx.mock
+async def test_retry_after_header_is_honoured_and_capped(fixture_bytes: FixtureLoader) -> None:
+    respx.get(BASE_URL).mock(
+        side_effect=[
+            httpx.Response(429, headers={"Retry-After": "17"}),
+            httpx.Response(503, headers={"Retry-After": "86400"}),
+            httpx.Response(200, content=fixture_bytes("arxiv_page.xml")),
+        ]
+    )
+    sleep = RecordingSleep()
+    async with httpx.AsyncClient() as http:
+        pages = await collect(make_client(http, sleep, request_delay=0))
+
+    assert len(pages[0].papers) == 3
+    assert sleep.calls == [17.0, 60.0]  # the server's wait, then the cap
+
+
+@respx.mock
 async def test_gives_up_after_max_attempts() -> None:
     route = respx.get(BASE_URL).respond(503)
     async with httpx.AsyncClient() as http:

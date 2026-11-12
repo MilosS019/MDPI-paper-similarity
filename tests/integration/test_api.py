@@ -135,6 +135,8 @@ async def test_submit_paper_returns_201_with_id_and_location(client: httpx.Async
         {"text": "   \n\t "},
         {"text": 42},
         {"text": "ok", "unexpected": True},
+        {"text": "abc\x00def"},  # NUL cannot be stored in Postgres text
+        {"title": "bad\x00title", "text": "ok"},
     ],
 )
 async def test_submit_paper_rejects_invalid_bodies(

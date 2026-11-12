@@ -34,6 +34,15 @@ class SubmitPaperRequest(BaseModel):
         "(PULSE_MAX_SUBMISSION_CHARS, 100,000 characters by default).",
     )
 
+    @field_validator("title", "text")
+    @classmethod
+    def _no_nul_characters(cls, value: str | None) -> str | None:
+        # Valid JSON ("\u0000") but not storable in a Postgres text column: without this
+        # check the insert fails and the client gets a 500 for its own bad input.
+        if value is not None and "\x00" in value:
+            raise ValueError("must not contain NUL (\\u0000) characters")
+        return value
+
     @field_validator("text")
     @classmethod
     def _text_not_blank(cls, value: str) -> str:
